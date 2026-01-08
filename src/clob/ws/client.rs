@@ -50,6 +50,7 @@ use crate::ws::connection::ConnectionState;
 /// ```
 #[derive(Clone)]
 pub struct Client<S: State = Unauthenticated> {
+    // 通过泛型状态 S（默认 Unauthenticated）区分已/未认证客户端，编译期限制可用方法。
     inner: Arc<ClientInner<S>>,
 }
 
@@ -496,6 +497,8 @@ impl ChannelHandles {
         Self {
             endpoint,
             config,
+            // OnceCell 用于“一次性初始化”与惰性加载：首次访问时初始化，之后只读复用。
+            // 常用场景：昂贵资源（连接/缓存/配置）只创建一次；get_or_try_init 失败可重试。
             resources: OnceCell::new(),
         }
     }

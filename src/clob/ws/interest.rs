@@ -105,6 +105,7 @@ impl InterestTracker {
 
     /// Add interest in specific message types.
     pub fn add(&self, interest: MessageInterest) {
+        // 使用内存序保证并发可见性：Release 配合读取端的 Acquire，确保位标志更新后可被其他线程正确观察。
         self.interest.fetch_or(interest.bits(), Ordering::Release);
     }
 
