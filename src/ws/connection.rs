@@ -2,6 +2,9 @@
     clippy::module_name_repetitions,
     reason = "Connection types expose their domain in the name for clarity"
 )]
+// 说明：clippy 是 Rust 的静态检查工具（`cargo clippy`）。这里有意放宽
+// `module_name_repetitions`，因为带领域前缀的命名（如 ConnectionManager）
+// 能让 WebSocket 连接相关类型更清晰。
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -33,6 +36,8 @@ const BROADCAST_CAPACITY: usize = 1024;
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionState {
+    // `#[non_exhaustive]` 表示该枚举未来可能新增变体；外部调用方需使用带 `_` 的匹配，
+    // 以避免升级时因新增变体而破坏兼容性。
     /// Not connected
     Disconnected,
     /// Attempting to connect
@@ -53,6 +58,8 @@ impl ConnectionState {
     /// Check if the connection is currently active.
     #[must_use]
     pub const fn is_connected(self) -> bool {
+        // `#[must_use]` 提醒调用方不要忽略返回值；这里是状态判断，忽略可能是逻辑错误。
+        // `matches!` 是模式匹配宏，用于判断 self 是否匹配 `Connected { .. }` 变体。
         matches!(self, Self::Connected { .. })
     }
 }
@@ -102,6 +109,8 @@ where
     broadcast_tx: broadcast::Sender<M>,
     /// Phantom data for unused type parameters
     _phantom: PhantomData<P>,
+    // PhantomData<P> 用来“标记”类型参数 P 被使用，避免未使用泛型的编译告警，
+    // 同时让编译器在自动 trait 推导（如 Send/Sync）时考虑 P 的约束。
 }
 
 impl<M, P> ConnectionManager<M, P>
@@ -190,11 +199,14 @@ where
                     }
                 }
                 Err(e) => {
+                    // 将底层 tungstenite 连接错误包装为统一的 SDK Error，并标记为 WebSocket 类型，
+                    // 这样上层可以按 Kind 分类处理，同时保留原始错误链路。
                     let error = Error::with_source(Kind::WebSocket, WsError::Connection(e));
                     #[cfg(feature = "tracing")]
                     tracing::warn!("Unable to connect: {error:?}");
                     #[cfg(not(feature = "tracing"))]
                     let _ = &error;
+                    // saturating_add 防止尝试次数溢出（达到 u32::MAX 后保持不变），避免回绕导致错误判断。
                     attempt = attempt.saturating_add(1);
                 }
             }
@@ -331,6 +343,9 @@ where
             // Mark current PONG state as seen before sending PING
             // This prevents changed() from returning immediately due to a stale PONG
             drop(pong_rx.borrow_and_update());
+            // 这里先读取并“消费”当前的 PONG 时间戳，确保后面的 changed()
+            // 只在新的 PONG 到来时才会触发，避免误判为心跳已响应。
+            // 使用 drop 是为了立即释放临时的借用，确保后续对 pong_rx 的可变操作不被借用阻塞。
 
             // Send PING request to message loop
             let ping_sent = Instant::now();
