@@ -25,7 +25,7 @@ pub type ApiKey = Uuid;
 
 /// Generic set of credentials used to authenticate to the Polymarket API. These credentials are
 /// returned when calling [`crate::clob::Client::create_or_derive_api_key`], [`crate::clob::Client::derive_api_key`], or
-/// [`crate::clob::Client::create_api_key`]. They are used by the [`crate::clob::state::Authenticated`] client to
+/// [`crate::clob::Client::create_api_key`]. They are used by the [`state::Authenticated`] client to
 /// sign the [`Request`] when making calls to the API.
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Credentials {
@@ -64,24 +64,28 @@ impl Credentials {
     }
 }
 
-/// Each [`Client`] can exist in one state at a time, i.e. [`state::Unauthenticated`] or
+/// Each client can exist in one state at a time, i.e. [`state::Unauthenticated`] or
 /// [`state::Authenticated`].
 pub mod state {
     use crate::auth::{Credentials, Kind};
     use crate::types::Address;
 
-    /// The initial state of the [`super::Client`]
+    /// The initial state of the client
     #[non_exhaustive]
     #[derive(Clone, Debug)]
     pub struct Unauthenticated;
 
-    /// The elevated state of the [`super::Client`]. Calling [`super::Client::authentication_builder`]
-    /// will return an [`super::AuthenticationBuilder`], which can be turned into
-    /// an authenticated clob via [`super::AuthenticationBuilder::authenticate`].
+    /// The elevated state of the client. For example, calling [`crate::clob::Client::authentication_builder`]
+    /// will return an [`crate::clob::client::AuthenticationBuilder`], which can be turned into
+    /// an authenticated clob via [`crate::clob::client::AuthenticationBuilder::authenticate`].
     ///
     /// See `examples/authenticated.rs` for more context.
     #[non_exhaustive]
     #[derive(Clone, Debug)]
+    #[cfg_attr(
+        not(feature = "clob"),
+        expect(dead_code, reason = "Fields used by clob module when feature enabled")
+    )]
     pub struct Authenticated<K: Kind> {
         /// The signer's address that created the credentials
         pub(crate) address: Address,
@@ -144,6 +148,7 @@ mod sealed {
     pub trait Sealed {}
 }
 
+#[cfg(feature = "clob")]
 pub(crate) mod l1 {
     use std::borrow::Cow;
 
@@ -211,6 +216,7 @@ pub(crate) mod l1 {
     }
 }
 
+#[cfg(feature = "clob")]
 pub(crate) mod l2 {
     use alloy::hex::ToHexExt as _;
     use reqwest::Request;
@@ -418,7 +424,7 @@ fn hmac(secret: &SecretString, message: &str) -> Result<String> {
 mod tests {
     use std::str::FromStr as _;
 
-    use alloy::signers::Signer as _;
+    #[cfg(feature = "clob")]
     use alloy::signers::local::LocalSigner;
     use reqwest::{Client, Method, RequestBuilder};
     use serde_json::json;
@@ -427,13 +433,18 @@ mod tests {
 
     use super::*;
     use crate::auth::builder::Config;
+    #[cfg(feature = "clob")]
     use crate::auth::state::Authenticated;
+    #[cfg(feature = "clob")]
     use crate::types::address;
+    #[cfg(feature = "clob")]
     use crate::{AMOY, Result};
 
     // publicly known private key
+    #[cfg(feature = "clob")]
     const PRIVATE_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
+    #[cfg(feature = "clob")]
     #[tokio::test]
     async fn l1_headers_should_succeed() -> anyhow::Result<()> {
         let signer = LocalSigner::from_str(PRIVATE_KEY)?.with_chain_id(Some(AMOY));
@@ -458,6 +469,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "clob")]
     #[tokio::test]
     async fn l2_headers_should_succeed() -> anyhow::Result<()> {
         let signer = LocalSigner::from_str(PRIVATE_KEY)?;
