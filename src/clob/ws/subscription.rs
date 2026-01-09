@@ -241,6 +241,7 @@ impl SubscriptionManager {
             #[cfg(feature = "tracing")]
             tracing::debug!(
                 count = new_assets.len(),
+                // `?` 使用 Debug 格式化（不同于 `%` 的 Display），便于输出集合/结构体内容。
                 ?new_assets,
                 custom_features,
                 "Subscribing to new market assets"
@@ -266,6 +267,8 @@ impl SubscriptionManager {
         let mut rx = self.connection.subscribe();
         let asset_ids_set: HashSet<String> = asset_ids.into_iter().collect();
 
+        // try_stream! 用异步生成器构建 `Stream<Item = Result<T>>`，可用 `yield` 产出项，
+        // 并用 `?` 在流中传播错误（这里用于在接收/过滤时产生错误或结束）。
         Ok(try_stream! {
             loop {
                 match rx.recv().await {
