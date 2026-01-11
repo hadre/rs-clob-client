@@ -116,9 +116,10 @@ impl serde_with::SerializeAs<String> for StringFromAny {
 pub fn deserialize_with_warnings<T: DeserializeOwned>(value: Value) -> crate::Result<T> {
     use std::any::type_name;
 
+    let redacted = redact_value(&value);
     tracing::trace!(
         type_name = %type_name::<T>(),
-        json = %value,
+        json = %redacted,
         "deserializing JSON"
     );
 
@@ -279,9 +280,61 @@ fn parse_path_segments(path: &str) -> Vec<String> {
 #[cfg(feature = "tracing")]
 fn format_value(value: Option<&Value>) -> String {
     match value {
-        Some(v) => v.to_string(),
+        Some(v) => redact_value(v).to_string(),
         None => "<unable to retrieve>".to_owned(),
     }
+}
+
+#[cfg(feature = "tracing")]
+fn redact_value(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut redacted = serde_json::Map::with_capacity(map.len());
+            for (key, inner) in map {
+                if is_sensitive_key(key) {
+                    redacted.insert(key.clone(), Value::String("<redacted>".to_owned()));
+                } else {
+                    redacted.insert(key.clone(), redact_value(inner));
+                }
+            }
+            Value::Object(redacted)
+        }
+        Value::Array(items) => {
+            let redacted_items = items.iter().map(redact_value).collect();
+            Value::Array(redacted_items)
+        }
+        _ => value.clone(),
+    }
+}
+
+#[cfg(feature = "tracing")]
+fn is_sensitive_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace('-', "_");
+    if normalized.contains("secret")
+        || normalized.contains("passphrase")
+        || normalized.contains("private_key")
+        || normalized.contains("privatekey")
+        || normalized.contains("mnemonic")
+        || normalized.contains("seed")
+    {
+        return true;
+    }
+
+    matches!(
+        normalized.as_str(),
+        "api_key"
+            | "apikey"
+            | "access_key"
+            | "accesskey"
+            | "authorization"
+            | "signature"
+            | "poly_signature"
+            | "poly_builder_signature"
+            | "poly_builder_api_key"
+            | "poly_builder_passphrase"
+            | "poly_api_key"
+            | "poly_passphrase"
+    )
 }
 
 #[cfg(test)]
@@ -710,6 +763,25 @@ mod tests {
         // JSON object serialization order may vary, check both keys present
         assert!(formatted.contains("\"a\":1"));
         assert!(formatted.contains("\"b\":2"));
+    }
+
+    #[cfg(feature = "tracing")]
+    #[test]
+    fn format_redacts_sensitive_fields() {
+        let value = serde_json::json!({
+            "apiKey": "real-key",
+            "secret": "real-secret",
+            "nested": { "passphrase": "real-passphrase" },
+            "safe": "ok"
+        });
+
+        let formatted = format_value(Some(&value));
+        assert!(formatted.contains("\"apiKey\":\"<redacted>\""));
+        assert!(formatted.contains("\"secret\":\"<redacted>\""));
+        assert!(formatted.contains("\"passphrase\":\"<redacted>\""));
+        assert!(formatted.contains("\"safe\":\"ok\""));
+        assert!(!formatted.contains("real-secret"));
+        assert!(!formatted.contains("real-passphrase"));
     }
 
     #[cfg(feature = "tracing")]
