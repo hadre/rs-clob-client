@@ -1362,6 +1362,7 @@ impl<K: Kind> Client<Authenticated<K>> {
     }
 
     /// Attempts to sign the provided [`SignableOrder`] using the inner signer of [`Authenticated<K>`]
+    /// Signer 是 alloy 提供的签名器 trait，用于对 EIP-712 哈希进行签名并返回签名结果。
     #[expect(
         clippy::missing_panics_doc,
         reason = "No need to publicly document as we are guarded by the typestate pattern. \
